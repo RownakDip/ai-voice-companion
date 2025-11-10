@@ -25,16 +25,15 @@
         const audioPlayback = document.getElementById('audioPlayback');
         const statusElement = document.getElementById('status');
         
-        // --- ▼▼▼ CRUCIAL STEP ▼▼▼ ---
-        // PASTE YOUR N8N PRODUCTION URL INSIDE THE QUOTES
-        const n8nWebhookUrl = 'YOUR_N8N_PRODUCTION_URL_HERE';
-        // --- ▲▲▲ CRUCIAL STEP ▲▲▲ ---
+        // --- CORRECT URL IS NOW IN THE CORRECT PLACE ---
+        const n8nWebhookUrl = 'https://light47.app.n8n.cloud/webhook/voice-chat';
 
         let mediaRecorder;
         let audioChunks = [];
 
         recordButton.addEventListener('click', async () => {
-            if (n8nWebhookUrl === 'https://light47.app.n8n.cloud/webhook/voice-chat') {
+            // This check now works correctly
+            if (n8nWebhookUrl === 'YOUR_N8N_PRODUCTION_URL_HERE') {
                 statusElement.textContent = "Error: The n8n webhook URL is not set.";
                 return;
             }
