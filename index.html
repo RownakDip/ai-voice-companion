@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Voice Companion</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f4f5f7; margin: 0; }
+        h1 { color: #172B4D; }
+        #recordButton { padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 50px; border: none; color: white; transition: background-color 0.3s, transform 0.1s; }
+        #recordButton:active { transform: scale(0.95); }
+        .recording { background-color: #DE350B; }
+        .idle { background-color: #0052CC; }
+        .waiting { background-color: #FFAB00; cursor: not-allowed; }
+        #status { margin-top: 20px; font-size: 16px; color: #42526E; height: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Talk to your AI Companion</h1>
+    <button id="recordButton" class="idle">Click to Record</button>
+    <p id="status">Status: Idle</p>
+    <audio id="audioPlayback" style="display:none;"></audio>
+
+    <script>
+        const recordButton = document.getElementById('recordButton');
+        const audioPlayback = document.getElementById('audioPlayback');
+        const statusElement = document.getElementById('status');
+        
+        // --- ▼▼▼ CRUCIAL STEP ▼▼▼ ---
+        // PASTE YOUR N8N PRODUCTION URL INSIDE THE QUOTES
+        const n8nWebhookUrl = 'YOUR_N8N_PRODUCTION_URL_HERE';
+        // --- ▲▲▲ CRUCIAL STEP ▲▲▲ ---
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        recordButton.addEventListener('click', async () => {
+            if (n8nWebhookUrl === 'YOUR_N8N_PRODUCTION_URL_HERE') {
+                statusElement.textContent = "Error: The n8n webhook URL is not set.";
+                return;
+            }
+            if (recordButton.classList.contains('waiting')) return;
+
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.start();
+                    audioChunks = [];
+                    
+                    recordButton.textContent = 'Stop Recording';
+                    recordButton.className = 'recording';
+                    statusElement.textContent = "Status: Recording...";
+
+                    mediaRecorder.onstop = async () => {
+                        recordButton.textContent = 'Waiting for AI...';
+                        recordButton.className = 'waiting';
+                        statusElement.textContent = "Status: Processing...";
+
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        
+                        try {
+                            const response = await fetch(n8nWebhookUrl, {
+                                method: 'POST',
+                                body: audioBlob,
+                                headers: { 'Content-Type': 'audio/webm' }
+                            });
+
+                            if (response.ok) {
+                                statusElement.textContent = "Status: Response received!";
+                                const audioBlobResponse = await response.blob();
+                                const audioUrl = URL.createObjectURL(audioBlobResponse);
+                                audioPlayback.src = audioUrl;
+                                audioPlayback.play();
+                                audioPlayback.onended = () => {
+                                    statusElement.textContent = "Status: Idle";
+                                    recordButton.textContent = 'Click to Record';
+                                    recordButton.className = 'idle';
+                                };
+                            } else {
+                                const errorText = await response.text();
+                                statusElement.textContent = `Status: Error - ${errorText}`;
+                                recordButton.textContent = 'Click to Record';
+                                recordButton.className = 'idle';
+                            }
+                        } catch (error) {
+                            statusElement.textContent = `Status: Error - Could not connect to n8n.`;
+                            recordButton.textContent = 'Click to Record';
+                            recordButton.className = 'idle';
+                        }
+                    };
+                } catch (err) {
+                    statusElement.textContent = 'Status: Error - Microphone access denied.';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
