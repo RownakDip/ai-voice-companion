@@ -1,207 +1,215 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Voice Companion - n8n Connector</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-            background-color: #0d1117;
-            color: #c9d1d9;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            text-align: center;
-            padding: 40px;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            background-color: #161b22;
-            width: 90%;
-            max-width: 500px;
-        }
-        h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-        p {
-            color: #8b949e;
-            margin-top: 0;
-        }
-        .buttons button {
-            background-color: #238636;
-            color: #ffffff;
-            border: 1px solid #2ea043;
-            border-radius: 6px;
-            padding: 12px 24px;
-            font-size: 1.1em;
-            cursor: pointer;
-            margin: 10px;
-            transition: background-color 0.2s, opacity 0.2s;
-        }
-        .buttons button:hover {
-            background-color: #2ea043;
-        }
-        .buttons button:disabled {
-            background-color: #282e33;
-            border-color: #444c56;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        #stopButton {
-            background-color: #da3633;
-            border-color: #f85149;
-        }
-        #stopButton:hover {
-            background-color: #f85149;
-        }
-        #status {
-            margin-top: 25px;
-            font-size: 1.1em;
-            min-height: 25px;
-            color: #8b949e;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>AI Voice Companion</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background-color: #000;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .orb-container {
+      position: relative;
+    }
+
+    .orb {
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle at 30% 30%, #00ffff, #004d4d);
+      border-radius: 50%;
+      box-shadow: 0 0 40px #00ffff88;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2; /* Ensures clickability */
+      transition: background 0.5s ease, box-shadow 0.5s ease;
+    }
+
+    .ring {
+      position: absolute;
+      top: -20px;
+      left: -20px;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      box-shadow: 0 0 30px #00ffff55;
+      animation: pulse 2s infinite;
+      z-index: 1;
+      pointer-events: none; /* Prevents click interference */
+    }
+    
+    .orb.listening {
+      background: radial-gradient(circle at 30% 30%, #00ffcc, #005c5c);
+      box-shadow: 0 0 50px #00ffff;
+    }
+
+    .orb.playing {
+      background: radial-gradient(circle at 30% 30%, #ff00ff, #520052);
+      box-shadow: 0 0 50px #ff00ff99;
+    }
+
+    .ring.listening {
+      animation: vibrate 0.4s infinite;
+    }
+
+    .ring.playing {
+      animation: glow 1s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.6; }
+      50% { transform: scale(1.2); opacity: 1; }
+    }
+
+    @keyframes vibrate {
+      0% { transform: scale(1.05); }
+      50% { transform: scale(1.15); }
+      100% { transform: scale(1.05); }
+    }
+
+    @keyframes glow {
+      0% { box-shadow: 0 0 40px #ff00ff88; }
+      100% { box-shadow: 0 0 60px #ff00ffcc; }
+    }
+
+    .status-text {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #aaa;
+      font-weight: 300;
+      font-style: italic;
+      min-height: 27px;
+    }
+  </style>
 </head>
 <body>
+  <div class="orb-container">
+    <div id="ring" class="ring"></div>
+    <div id="orb" class="orb" title="Click to speak with AI"></div>
+  </div>
+  <div id="status" class="status-text">Click the orb to speak</div>
 
-    <div class="container">
-        <h1>ai-voice-companion</h1>
-        <p>Record your voice, send it to n8n, and hear the response.</p>
-        
-        <div class="buttons">
-            <button id="startButton">Start Recording</button>
-            <button id="stopButton" disabled>Stop Recording</button>
-        </div>
+  <audio id="beep" src="https://www.soundjay.com/button/sounds/button-3.mp3" preload="auto"></audio>
 
-        <div id="status">
-            Ready. Press start to record.
-        </div>
-    </div>
+  <script>
+    const orb = document.getElementById('orb');
+    const ring = document.getElementById('ring');
+    const statusText = document.getElementById('status');
+    const beep = document.getElementById('beep');
 
-    <script>
-        // Find the HTML elements we need
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
-        const statusDiv = document.getElementById('status');
-        
-        let mediaRecorder;
-        let audioChunks = [];
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
 
-        // When the "Start Recording" button is clicked
-        startButton.addEventListener('click', async () => {
-            try {
-                // Request access to the user's microphone
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                // Initialize the MediaRecorder
-                mediaRecorder = new MediaRecorder(stream);
-                
-                // This event fires when the recorder has a new chunk of audio data
-                mediaRecorder.addEventListener("dataavailable", event => {
-                    audioChunks.push(event.data);
-                });
+    // Function to send audio data to n8n and handle the audio response
+    function sendToN8n(base64Audio) {
+        statusText.textContent = "Processing...";
 
-                // This event fires when the recording is stopped by the user
-                mediaRecorder.addEventListener("stop", () => {
-                    // Combine all audio chunks into a single file (a "Blob")
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        // This is your working n8n production webhook URL
+        const n8nWebhookUrl = 'https://light47.app.n8n.cloud/webhook/ai-voice-input';
 
-                    // Use a FileReader to convert the audio file into a Base64 text string
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = () => {
-                        const base64String = reader.result;
-                        // Send the text representation of the audio to our n8n workflow
-                        sendToN8n(base64String);
-                    };
+        fetch(n8nWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                audioData: base64Audio,
+                fileName: `recording-${new Date().toISOString()}.webm`
+            }),
+        })
+        .then(response => {
+            if (!response.ok) throw new Error(`Server response was not ok: ${response.status}`);
+            return response.blob();
+        })
+        .then(audioBlob => {
+            const audioURL = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioURL);
 
-                    // Clear the chunks array for the next recording
-                    audioChunks = [];
-                });
+            audio.onplay = () => {
+              orb.classList.add('playing');
+              ring.classList.add('playing');
+              statusText.textContent = "Responding...";
+            };
 
-                // Update the UI
-                startButton.disabled = true;
-                stopButton.disabled = false;
-                statusDiv.textContent = "Recording... Press stop when finished.";
-                
-                // Start recording!
-                mediaRecorder.start();
-            } catch (error) {
-                console.error("Error accessing microphone:", error);
-                statusDiv.textContent = "Error: Could not access microphone. Please grant permission.";
-            }
+            audio.onended = () => {
+              orb.classList.remove('playing');
+              ring.classList.remove('playing');
+              statusText.textContent = "Click the orb to speak";
+            };
+
+            audio.play();
+        })
+        .catch(err => {
+            console.error("Error communicating with n8n:", err);
+            statusText.textContent = "Error communicating with AI.";
+            orb.classList.remove('listening', 'playing');
+            ring.classList.remove('listening', 'playing');
+        });
+    }
+
+    // Function to start recording audio
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        isRecording = true;
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.addEventListener("dataavailable", event => {
+          audioChunks.push(event.data);
         });
 
-        // When the "Stop Recording" button is clicked
-        stopButton.addEventListener('click', () => {
-            // Stop the MediaRecorder. This will trigger the 'stop' event listener we defined above.
-            mediaRecorder.stop();
-
-            // Update the UI
-            startButton.disabled = false;
-            stopButton.disabled = true;
-            statusDiv.textContent = "Processing and sending to n8n...";
+        mediaRecorder.addEventListener("stop", () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = () => {
+            const base64String = reader.result;
+            sendToN8n(base64String);
+          };
         });
 
-        // Function to send the audio data to n8n and handle the response
-        function sendToN8n(base64Audio) {
-            // =============================================================================
-            // !!!  CRITICAL: PASTE YOUR N8N **PRODUCTION** WEBHOOK URL HERE              !!!
-            //      The "Respond to Webhook" node only works with production URLs.
-            // =============================================================================
-            const n8nWebhookUrl = 'https://light47.app.n8n.cloud/webhook/ai-voice-input';
+        beep.play();
+        mediaRecorder.start();
+        orb.classList.add('listening');
+        ring.classList.add('listening');
+        statusText.textContent = "Listening...";
+      } catch (error) {
+        console.error("Error accessing microphone:", error);
+        statusText.textContent = "Error: Microphone permission denied.";
+        isRecording = false;
+      }
+    }
 
-            if (n8nWebhookUrl.includes('PASTE_YOUR')) {
-                statusDiv.textContent = 'ERROR: The n8n webhook URL has not been set in the HTML file.';
-                return;
-            }
+    // Function to stop recording
+    function stopRecording() {
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+        isRecording = false;
+        orb.classList.remove('listening');
+        ring.classList.remove('listening');
+      }
+    }
 
-            // Use the Fetch API to POST the data to your n8n workflow
-            fetch(n8nWebhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                // Send a JSON object with the Base64 audio string and a filename
-                body: JSON.stringify({
-                    audioData: base64Audio,
-                    fileName: `recording-${new Date().toISOString()}.webm`
-                }),
-            })
-            .then(response => {
-                // Check if the network response was successful
-                if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.status}`);
-                }
-                // VERY IMPORTANT: We are expecting an audio file back, so we handle it as a "blob"
-                return response.blob();
-            })
-            .then(audioBlob => {
-                // Create a temporary URL for the received audio file
-                const audioUrl = URL.createObjectURL(audioBlob);
-                // Create a new Audio element in memory
-                const audio = new Audio(audioUrl);
-                // Play the audio
-                audio.play();
-                statusDiv.textContent = "Response received! Playing audio...";
-                
-                // Optional: Reset status after audio finishes playing
-                audio.onended = () => {
-                    statusDiv.textContent = "Ready. Press start to record.";
-                };
-            })
-            .catch((error) => {
-                // If anything goes wrong, display an error message
-                console.error('Error:', error);
-                statusDiv.textContent = `Error: ${error.message}`;
-            });
-        }
-    </script>
+    // Main click handler for the orb
+    orb.addEventListener('click', () => {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
 
+  </script>
 </body>
 </html>
