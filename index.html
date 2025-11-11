@@ -131,6 +131,7 @@
                 return response.json(); // Parse the JSON response from n8n
             })
             .then(data => {
+                
                 // 4. Display the response from n8n in the response container
                 //    The JSON.stringify part makes the output nicely formatted.
                 console.log('Success:', data);
