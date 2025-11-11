@@ -29,18 +29,8 @@
         p {
             color: #8b949e;
             margin-top: 0;
-            margin-bottom: 20px;
         }
-        input[type="text"] {
-            background-color: #0d1117;
-            color: #c9d1d9;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            padding: 10px;
-            width: 300px;
-            font-size: 1em;
-        }
-        button {
+        .buttons button {
             background-color: #238636;
             color: #ffffff;
             border: 1px solid #2ea043;
@@ -48,22 +38,29 @@
             padding: 10px 20px;
             font-size: 1em;
             cursor: pointer;
-            margin-left: 10px;
-            transition: background-color 0.2s;
+            margin: 10px;
+            transition: background-color 0.2s, opacity 0.2s;
         }
-        button:hover {
+        .buttons button:hover {
             background-color: #2ea043;
         }
-        #responseContainer {
+        .buttons button:disabled {
+            background-color: #282e33;
+            border-color: #444c56;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        #stopButton {
+            background-color: #da3633;
+            border-color: #f85149;
+        }
+        #stopButton:hover {
+            background-color: #f85149;
+        }
+        #status {
             margin-top: 20px;
-            padding: 15px;
-            background-color: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            min-height: 50px;
-            text-align: left;
-            white-space: pre-wrap; /* Helps in displaying formatted JSON */
-            word-wrap: break-word;
+            font-size: 1.1em;
+            min-height: 25px;
         }
     </style>
 </head>
@@ -71,78 +68,114 @@
 
     <div class="container">
         <h1>ai-voice-companion</h1>
-        <p>A web interface for my n8n AI.</p>
+        <p>Record your voice and send it to n8n.</p>
         
-        <div>
-            <input type="text" id="userInput" placeholder="Type your message here...">
-            <button id="sendButton">Send to n8n</button>
+        <div class="buttons">
+            <button id="startButton">Start Recording</button>
+            <button id="stopButton" disabled>Stop Recording</button>
         </div>
 
-        <h3>Response from n8n:</h3>
-        <div id="responseContainer">
-            <!-- The response from your n8n workflow will appear here -->
+        <div id="status">
+            <!-- Status messages will appear here -->
         </div>
     </div>
 
     <script>
-        // Find the HTML elements we need to work with
-        const sendButton = document.getElementById('sendButton');
-        const userInput = document.getElementById('userInput');
-        const responseContainer = document.getElementById('responseContainer');
+        // Find the HTML elements we need
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const statusDiv = document.getElementById('status');
+        
+        let mediaRecorder;
+        let audioChunks = [];
 
-        // Add a click event listener to the button
-        sendButton.addEventListener('click', () => {
-            // 1. Get the text from the input field
-            const userMessage = userInput.value;
+        // When the Start button is clicked
+        startButton.addEventListener('click', async () => {
+            // Request access to the user's microphone
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // Start the MediaRecorder API
+            mediaRecorder = new MediaRecorder(stream);
+            
+            // This event fires whenever the recorder has a new chunk of audio data
+            mediaRecorder.addEventListener("dataavailable", event => {
+                audioChunks.push(event.data);
+            });
 
-            // 2. !!! IMPORTANT !!!
-            //    Replace this URL with the Webhook URL from your n8n workflow.
-            //    Make sure to use the Test URL while building, and the Production URL for the final version.
+            // This event fires when the recording is stopped
+            mediaRecorder.addEventListener("stop", () => {
+                // Combine all the audio chunks into a single Blob
+                const audioBlob = new Blob(audioChunks);
+
+                // Use a FileReader to convert the Blob to a Base64 string
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = () => {
+                    const base64String = reader.result;
+                    sendToN8n(base64String);
+                };
+
+                // Clear the chunks array for the next recording
+                audioChunks = [];
+            });
+
+            // Update UI
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            statusDiv.textContent = "Recording... Press stop to send.";
+            
+            // Start recording!
+            mediaRecorder.start();
+        });
+
+        // When the Stop button is clicked
+        stopButton.addEventListener('click', () => {
+            // Stop the MediaRecorder, which will trigger the 'stop' event listener above
+            mediaRecorder.stop();
+
+            // Update UI
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            statusDiv.textContent = "Processing and sending audio...";
+        });
+
+        // Function to send the audio data to n8n
+        function sendToN8n(base64Audio) {
+            // !!! IMPORTANT !!! Replace this with your n8n Webhook URL.
             const n8nWebhookUrl = 'https://light47.app.n8n.cloud/webhook-test/ai-voice-input';
 
-            // Check if the URL has been replaced
             if (n8nWebhookUrl === 'PASTE_YOUR_N8N_WEBHOOK_URL_HERE') {
-                responseContainer.textContent = 'Error: Please replace the placeholder n8n Webhook URL in the HTML file.';
+                statusDiv.textContent = 'Error: Please set the n8n Webhook URL in the HTML file.';
                 return;
             }
 
-            // Show a "sending" message to the user
-            responseContainer.textContent = 'Sending to n8n...';
-
-            // 3. Use the Fetch API to send the data to n8n
+            // Use the Fetch API to POST the data
             fetch(n8nWebhookUrl, {
                 method: 'POST',
                 headers: {
-                    // Tell n8n we are sending JSON data
                     'Content-Type': 'application/json',
                 },
-                // Convert the JavaScript object into a JSON string
+                // Send a JSON object with the Base64 audio string
                 body: JSON.stringify({
-                    message: userMessage,
-                    source: 'ai-voice-companion',
-                    timestamp: new Date().toISOString()
+                    audioData: base64Audio,
+                    fileName: `recording-${new Date().toISOString()}.webm`
                 }),
             })
             .then(response => {
-                // Check if the network response was successful
                 if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                    throw new Error(`Network response was not ok: ${response.status}`);
                 }
-                return response.json(); // Parse the JSON response from n8n
+                return response.json();
             })
             .then(data => {
-                
-                // 4. Display the response from n8n in the response container
-                //    The JSON.stringify part makes the output nicely formatted.
                 console.log('Success:', data);
-                responseContainer.textContent = JSON.stringify(data, null, 2);
+                statusDiv.textContent = "Successfully sent to n8n!";
             })
             .catch((error) => {
-                // 5. If something goes wrong, show an error message
                 console.error('Error:', error);
-                responseContainer.textContent = `An error occurred: ${error.message}`;
+                statusDiv.textContent = `Error sending to n8n: ${error.message}`;
             });
-        });
+        }
     </script>
 
 </body>
